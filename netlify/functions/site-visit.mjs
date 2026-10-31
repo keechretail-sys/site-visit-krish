@@ -69,6 +69,29 @@ export default async request => {
     }
   }
 
+  if (request.method === 'DELETE') {
+    const id = url.searchParams.get('id');
+    if (!validId(id)) return json(400, { error: 'Invalid report.' });
+    const expectedPin = process.env.SITE_VISIT_REPORTS_PIN || '';
+    if (!expectedPin) return json(503, { error: 'Report deletion is not configured. Add SITE_VISIT_REPORTS_PIN in Netlify.' });
+    let body;
+    try { body = await request.json(); } catch { return json(400, { error: 'Enter the reports access code.' }); }
+    if (String(body.pin || '') !== expectedPin) return json(401, { error: 'The reports access code is incorrect.' });
+    try {
+      const key = `reports/${id}`;
+      const report = await db.get(key, { type: 'json' });
+      if (!report) return json(404, { error: 'Report not found.' });
+      await db.delete(key);
+      if (report.importedFromLocalId) {
+        const sourceId = String(report.importedFromLocalId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+        if (sourceId) await db.delete(`imports/${sourceId}`);
+      }
+      return json(200, { deleted: true });
+    } catch {
+      return json(500, { error: 'Could not delete this report.' });
+    }
+  }
+
   if (request.method === 'PATCH') {
     const id = url.searchParams.get('id');
     if (!validId(id)) return json(400, { error: 'Invalid inspection link.' });
