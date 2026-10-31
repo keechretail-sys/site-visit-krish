@@ -53,13 +53,30 @@ export default async request => {
       const report = await db.get(`reports/${id}`, { type: 'json' });
       if (!report) return json(404, { error: 'Inspection not found.' });
       if (report.managerCompletion?.completedAt) return json(409, { error: 'Manager follow-up has already been completed.' });
-      const { managerCompletion } = await request.json();
+      const body = await request.json();
+      const allowedStatuses = new Set(['Open', 'In progress', 'Done']);
+      if (body.taskUpdate) {
+        const { index, status, managerNote } = body.taskUpdate;
+        if (!Number.isInteger(index) || index < 0 || index >= (report.managerTasks || []).length || !allowedStatuses.has(status)) {
+          return json(400, { error: 'Invalid task update.' });
+        }
+        const currentTask = report.managerTasks[index];
+        report.managerTasks[index] = {
+          ...currentTask,
+          status,
+          managerNote: String(managerNote || '').trim().slice(0, 2000),
+          savedAt: new Date().toISOString()
+        };
+        report.status = 'manager-in-progress';
+        await db.setJSON(`reports/${id}`, report);
+        return json(200, { saved: true, report });
+      }
+      const { managerCompletion } = body;
       const managerName = String(managerCompletion?.managerName || '').trim().slice(0, 100);
       const updates = managerCompletion?.tasks;
       if (!managerName || !Array.isArray(updates) || updates.length !== (report.managerTasks || []).length) {
         return json(400, { error: 'Manager name and all task updates are required.' });
       }
-      const allowedStatuses = new Set(['Open', 'In progress', 'Done']);
       const tasks = report.managerTasks.map((task, index) => {
         const update = updates[index] || {};
         if (!allowedStatuses.has(update.status)) throw new Error('Invalid task status');
