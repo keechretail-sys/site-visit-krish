@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 
 const store = () => getStore('site-visit-reports');
@@ -12,13 +12,7 @@ const json = (status, body) => new Response(JSON.stringify(body), {
 });
 const validId = id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
 const allowedSites = new Set(['Mansfield', 'Peveril', 'Lichfield', 'Brampton']);
-const reportsPinMatches = request => {
-  const expected = String(process.env.SITE_VISIT_REPORTS_PIN || '');
-  const received = String(request.headers.get('x-site-visit-pin') || '');
-  const a = Buffer.from(expected);
-  const b = Buffer.from(received);
-  return a.length >= 12 && a.length === b.length && timingSafeEqual(a, b);
-};
+
 
 export default async request => {
   const db = store();
@@ -26,8 +20,6 @@ export default async request => {
 
   if (request.method === 'GET') {
     if (url.searchParams.get('list') === '1') {
-      if (!process.env.SITE_VISIT_REPORTS_PIN) return json(503, { error: 'Online report access is not configured yet. Add SITE_VISIT_REPORTS_PIN in Netlify environment variables.' });
-      if (!reportsPinMatches(request)) return json(401, { error: 'The report access code is incorrect.' });
       try {
         const { blobs } = await db.list({ prefix: 'reports/' });
         const stored = await Promise.all(blobs.map(blob => db.get(blob.key, { type: 'json' })));
@@ -53,7 +45,6 @@ export default async request => {
       if (!report || !allowedSites.has(report.site) || !String(report.manager || '').trim()) {
         return json(400, { error: 'Site and manager are required.' });
       }
-      if (importLocal && !reportsPinMatches(request)) return json(401, { error: 'Enter the report access code before moving older reports online.' });
       const id = randomUUID();
       const sourceId = importLocal ? String(report.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) : '';
       const importKey = sourceId ? `imports/${sourceId}` : '';
