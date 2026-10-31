@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getStore } from '@netlify/blobs';
 
 const store = () => getStore('site-visit-reports');
@@ -12,12 +12,35 @@ const json = (status, body) => new Response(JSON.stringify(body), {
 });
 const validId = id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
 const allowedSites = new Set(['Mansfield', 'Peveril', 'Lichfield', 'Brampton']);
+const reportsPinMatches = request => {
+  const expected = String(process.env.SITE_VISIT_REPORTS_PIN || '');
+  const received = String(request.headers.get('x-site-visit-pin') || '');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(received);
+  return a.length >= 12 && a.length === b.length && timingSafeEqual(a, b);
+};
 
 export default async request => {
   const db = store();
   const url = new URL(request.url);
 
   if (request.method === 'GET') {
+    if (url.searchParams.get('list') === '1') {
+      if (!process.env.SITE_VISIT_REPORTS_PIN) return json(503, { error: 'Online report access is not configured yet. Add SITE_VISIT_REPORTS_PIN in Netlify environment variables.' });
+      if (!reportsPinMatches(request)) return json(401, { error: 'The report access code is incorrect.' });
+      try {
+        const { blobs } = await db.list({ prefix: 'reports/' });
+        const stored = await Promise.all(blobs.map(blob => db.get(blob.key, { type: 'json' })));
+        const reports = stored.filter(Boolean).map(report => ({
+          id: report.id, site: report.site, manager: report.manager, inspector: report.inspector,
+          date: report.date, createdAt: report.createdAt, counts: report.counts, issues: report.issues,
+          status: report.status, managerCompletion: report.managerCompletion
+        })).sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+        return json(200, { reports });
+      } catch {
+        return json(500, { error: 'Could not load online reports.' });
+      }
+    }
     const id = url.searchParams.get('id');
     if (!validId(id)) return json(400, { error: 'Invalid inspection link.' });
     const report = await db.get(`reports/${id}`, { type: 'json' });
@@ -26,21 +49,30 @@ export default async request => {
 
   if (request.method === 'POST') {
     try {
-      const { report } = await request.json();
+      const { report, importLocal = false } = await request.json();
       if (!report || !allowedSites.has(report.site) || !String(report.manager || '').trim()) {
         return json(400, { error: 'Site and manager are required.' });
       }
+      if (importLocal && !reportsPinMatches(request)) return json(401, { error: 'Enter the report access code before moving older reports online.' });
       const id = randomUUID();
+      const sourceId = importLocal ? String(report.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) : '';
+      const importKey = sourceId ? `imports/${sourceId}` : '';
+      if (importKey) {
+        const existingId = await db.get(importKey, { type: 'text' });
+        if (existingId) return json(200, { id: existingId, saved: true, imported: true });
+      }
       const saved = {
         ...report,
         id,
+        ...(sourceId ? { importedFromLocalId: sourceId } : {}),
         status: 'awaiting-manager',
         createdAt: new Date().toISOString(),
         managerCompletion: null
       };
       if (JSON.stringify(saved).length > 5_000_000) return json(413, { error: 'This report is too large to store. Reduce the number or size of photos.' });
       await db.setJSON(`reports/${id}`, saved);
-      return json(201, { id, saved: true });
+      if (importKey) await db.set(importKey, id);
+      return json(importLocal ? 200 : 201, { id, saved: true, imported: Boolean(importLocal) });
     } catch {
       return json(400, { error: 'Could not save this inspection.' });
     }
