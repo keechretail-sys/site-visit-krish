@@ -73,7 +73,7 @@ export default async request => {
     const id = url.searchParams.get('id');
     if (!validId(id)) return json(400, { error: 'Invalid report.' });
     const expectedPin = process.env.SITE_VISIT_REPORTS_PIN || '';
-    if (!expectedPin) return json(503, { error: 'Report deletion is not configured. Add SITE_VISIT_REPORTS_PIN in Netlify.' });
+    if (!expectedPin) return json(503, { error: 'Deletion PIN is unavailable for this Production deploy. Set SITE_VISIT_REPORTS_PIN with Functions scope in Netlify, then redeploy.' });
     let body;
     try { body = await request.json(); } catch { return json(400, { error: 'Enter the reports access code.' }); }
     if (String(body.pin || '') !== expectedPin) return json(401, { error: 'The reports access code is incorrect.' });
