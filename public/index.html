@@ -89,8 +89,10 @@ const baseYesNoGroups=[
  {id:'cashshop',title:'Cash and shop presentation',desc:'Answer Yes or No. If there is a problem, add a note explaining it.',items:[
   {id:'safedrop',question:'Were cash safe drops completed correctly?',issueIf:'no'},
   {id:'facedup',question:'Was the shop faced up properly?',issueIf:'no'}]},
- {id:'housekeeping',title:'Site housekeeping',desc:'Check the site storage area and note any cleaning needed.',items:[
-  {id:'storageClean',question:'Is the storage area clean and tidy?',issueIf:'no'}]},
+ {id:'housekeeping',title:'Storeroom',desc:'Check the back storeroom area is clean and tidy. If not, explain what needs cleaning or organising.',items:[
+  {id:'storageClean',question:'Is the storeroom area clean and tidy?',issueIf:'no'}]},
+ {id:'dailyWastage',title:'Daily wastage scans',desc:'Confirm staff or the manager complete wastage scans every day. If not, explain what was missed and what needs to be done.',items:[
+  {id:'dailyWastageScans',question:'Are daily wastage scans being completed every day by staff or the manager?',issueIf:'no'}]},
  {id:'compliance',title:'Due diligence and records',desc:'Confirm the required daily due diligence has been completed and recorded.',items:[
   {id:'dueDiligence',question:'Has the site due diligence been completed and recorded?',issueIf:'no'}]},
  {id:'labels',title:'Labels and promotions',desc:'Check labels against the product and confirm promotions are set up correctly.',items:[
